@@ -1,0 +1,340 @@
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local runService = game:GetService("RunService")
+local tweenService = game:GetService("TweenService")
+local uis = game:GetService("UserInputService")
+
+local player = game.Players.LocalPlayer
+local camera = workspace.Camera
+
+local Pets = replicatedStorage:WaitForChild("Pets")
+local Eggs = workspace:WaitForChild("Eggs")
+local Module3D = require(replicatedStorage:WaitForChild("Module3D"))
+
+local MaxDisplayDistance = 15
+local canHatch = false
+local isHatching = false
+local hatchOneConnection = nil
+
+wait(.5)
+
+local function animateBillboard(billboard, opOrClose)
+	if opOrClose == true then -- If you want to open, insert true.
+		tweenService:Create(billboard,TweenInfo.new(.1),{Size = UDim2.new(5,0,7,0)}):Play()
+	else -- If its false, then it closes.
+		tweenService:Create(billboard,TweenInfo.new(.1),{Size = UDim2.new(0,0,0,0)}):Play()
+		wait(.2)
+		billboard.Enabled = false
+	end
+	wait(.5)
+end
+
+for i, v  in pairs(Eggs:GetChildren()) do -- Collects eggs value and index.
+	local eggPets = Pets:FindFirstChild(v.Name) -- If v.Name is a valid pet in Pets.
+
+	if eggPets ~= nil then -- Checks if the v.Name exists.
+		local billboardTemp = script.Template
+		local container = billboardTemp:WaitForChild("Container")
+		local MainFrame = container:WaitForChild("MainFrame")
+		local template = MainFrame:WaitForChild("Template")
+		local display = template:WaitForChild("Display")
+
+		billboardTemp.Parent = script.Parent.Parent.EggBillboards
+		billboardTemp.Name = v.Name
+		billboardTemp.Adornee = v.EggMesh
+		billboardTemp.Enabled = true
+
+		local pets = {}
+
+		for x, pet in pairs(eggPets:GetChildren()) do -- Gets every pet rarity in the table.
+			table.insert(pets,pet.Rarity.Value)
+		end
+
+		table.sort(pets) -- Sorts the rarity table.
+
+		for i = 1, math.floor(#pets/2) do -- This swaps pets i to j, using some calculations.
+			local j = #pets - i + 1
+			pets[i], pets[j] = pets[j], pets[i]
+		end
+
+		for _, rarity in pairs(pets) do
+
+			for _, pet in pairs(eggPets:GetChildren()) do
+				if pet.Rarity.Value == rarity then -- If the pet rarity is equal to the current rarity, then it will create a new display.
+
+					local rarity = pet.Rarity.Value
+
+
+					local clonedTemp = template:Clone()
+
+					clonedTemp.Name = pet.Name
+					clonedTemp.Rarity.Text = tostring(pet.Rarity.Value).."%"
+					clonedTemp.Visible = true
+					clonedTemp.Parent = MainFrame
+
+					local petModel = Module3D:Attach3D(clonedTemp.Display,pet:Clone())
+					petModel:SetDepthMultiplier(1.2)
+					petModel.Camera.FieldOfView = 5
+					petModel.Visible = true
+
+					runService.RenderStepped:Connect(function()
+						petModel:SetCFrame(CFrame.Angles(0,tick() % (math.pi * 2),0) * CFrame.Angles(math.rad(-10),0,0))
+					end)
+
+					break
+				else -- Ignores if rarity is invalid.
+					continue
+				end
+			end
+		end
+
+
+
+		runService.RenderStepped:Connect(function() 
+			if player:DistanceFromCharacter(v.EggMesh.PrimaryPart.Position) < MaxDisplayDistance then -- If the player is within the range then it will display the hatch button UI.
+				canHatch = true
+				billboardTemp.Enabled = true
+				animateBillboard(billboardTemp, true)
+			else
+				animateBillboard(billboardTemp, false)
+			end
+		end)
+	end
+end
+
+local function hatchOne(petName, egg) -- It hatches one Egg.
+	local pet = Pets[egg.Name]:FindFirstChild(petName):Clone()
+	isHatching = true
+	local eggMesh = egg:FindFirstChild("EggMesh"):Clone()
+	for i, v in pairs(eggMesh:GetChildren()) do
+		if v:IsA("BasePart") then
+			v.Anchored = true
+			v.CanCollide = false
+		end
+	end
+	hatchOneConnection = runService.RenderStepped:Connect(function()
+		local cf = CFrame.new(0,0,-eggMesh.PrimaryPart.Size.Z * 2) * CFrame.Angles(0,0,math.sin(time() * 18)/2.3)
+		eggMesh:SetPrimaryPartCFrame(camera.CFrame * cf)
+	end)
+	eggMesh.Parent = camera
+	print("Hatching")
+	wait(3)
+	for i, v in pairs(eggMesh:GetChildren()) do
+		if v:IsA("BasePart") then
+			tweenService:Create(v,TweenInfo.new(.5),{Transparency = 1}):Play()
+		end
+	end
+	wait(.5)
+	hatchOneConnection:Disconnect()
+	eggMesh:Destroy()
+	script.Parent.Parent.PetDisplay.Visible = true
+	local petModel = Module3D:Attach3D(script.Parent.Parent.PetDisplay,pet)
+	petModel:SetDepthMultiplier(1.2)
+	petModel.Camera.FieldOfView = 5
+	petModel.Visible = true
+
+	runService.RenderStepped:Connect(function() 
+		petModel:SetCFrame(CFrame.Angles(0,tick() % (math.pi * 2),0) * CFrame.Angles(math.rad(-10),0,0)) -- 3d pet rotation(spin)
+	end)
+	wait(3)
+	tweenService:Create(script.Parent.Parent.PetDisplay:FindFirstChildOfClass("ViewportFrame"),TweenInfo.new(.5),{ImageTransparency = 1}):Play() -- Fades out the display.
+	wait(.5)
+
+	for i, v in pairs(script.Parent.Parent.PetDisplay:GetDescendants()) do
+		if v:IsA("ViewportFrame") then
+			v:Destroy()
+		end
+	end
+	script.Parent.Parent.PetDisplay.Visible = false
+
+	isHatching = false
+end
+
+local function tripleHatch(petName,petName2,petName3,egg) -- Creates a triple hatch fuction.
+	local pet = Pets[egg.Name]:FindFirstChild(petName):Clone()
+	local pet2 = Pets[egg.Name]:FindFirstChild(petName2):Clone()
+	local pet3 = Pets[egg.Name]:FindFirstChild(petName3):Clone()
+
+	isHatching = true
+	local eggMesh = egg:FindFirstChild("EggMesh"):Clone()
+	local eggMesh2 = egg:FindFirstChild("EggMesh"):Clone()
+	local eggMesh3 = egg:FindFirstChild("EggMesh"):Clone()
+
+	for i, v in pairs(eggMesh:GetChildren()) do
+		if v:IsA("BasePart") then
+			v.Anchored = true
+			v.CanCollide = false
+		end
+	end
+	for i, v in pairs(eggMesh2:GetChildren()) do
+		if v:IsA("BasePart") then
+			v.Anchored = true
+			v.CanCollide = false
+		end
+	end
+	for i, v in pairs(eggMesh3:GetChildren()) do
+		if v:IsA("BasePart") then
+			v.Anchored = true
+			v.CanCollide = false
+		end
+	end
+	hatchOneConnection = runService.RenderStepped:Connect(function() -- Animation of hatching egg.
+		local cf = CFrame.new(0,0,-eggMesh.PrimaryPart.Size.Z * 2) * CFrame.Angles(0,0,math.sin(time() * 18)/2.3)
+		local cf2 = CFrame.new(6,0,-eggMesh.PrimaryPart.Size.Z * 2) * CFrame.Angles(0,0,math.sin(time() * 18)/2.3)
+		local cf3 = CFrame.new(-6,0,-eggMesh.PrimaryPart.Size.Z * 2) * CFrame.Angles(0,0,math.sin(time() * 18)/2.3)
+		eggMesh:SetPrimaryPartCFrame(camera.CFrame * cf)
+		eggMesh2:SetPrimaryPartCFrame(camera.CFrame * cf2)
+		eggMesh3:SetPrimaryPartCFrame(camera.CFrame * cf3)
+
+	end)
+	-- Setting the parent to camera so animation is visible to the camera
+	eggMesh.Parent = camera
+	eggMesh2.Parent = camera
+	eggMesh3.Parent = camera
+
+	print("Hatching")
+	wait(3)
+	-- Destroying the egg mesh and creating a pet. 
+	for i, v in pairs(eggMesh:GetChildren()) do
+		if v:IsA("BasePart") then
+			tweenService:Create(v,TweenInfo.new(.5),{Transparency = 1}):Play()
+		end
+	end
+	for i, v in pairs(eggMesh2:GetChildren()) do
+		if v:IsA("BasePart") then
+			tweenService:Create(v,TweenInfo.new(.5),{Transparency = 1}):Play()
+		end
+	end
+	for i, v in pairs(eggMesh3:GetChildren()) do
+		if v:IsA("BasePart") then
+			tweenService:Create(v,TweenInfo.new(.5),{Transparency = 1}):Play()
+		end
+	end
+	wait(.5)
+	hatchOneConnection:Disconnect()
+	eggMesh:Destroy()
+	eggMesh2:Destroy()
+	eggMesh3:Destroy()
+	-- Showing the pets on the screen.
+	script.Parent.Parent.PetDisplay.Visible = true
+	script.Parent.Parent.PetDisplay2.Visible = true
+	script.Parent.Parent.PetDisplay3.Visible = true
+
+	local petModel = Module3D:Attach3D(script.Parent.Parent.PetDisplay,pet)
+	petModel:SetDepthMultiplier(1.2)
+	petModel.Camera.FieldOfView = 5
+	petModel.Visible = true
+
+	local petModel2 = Module3D:Attach3D(script.Parent.Parent.PetDisplay2,pet2)
+	petModel2:SetDepthMultiplier(1.2)
+	petModel2.Camera.FieldOfView = 5
+	petModel2.Visible = true
+
+	local petModel3 = Module3D:Attach3D(script.Parent.Parent.PetDisplay3,pet3)
+	petModel3:SetDepthMultiplier(1.2)
+	petModel3.Camera.FieldOfView = 5
+	petModel3.Visible = true
+
+
+	runService.RenderStepped:Connect(function()  
+		petModel:SetCFrame(CFrame.Angles(0,tick() % (math.pi * 2),0) * CFrame.Angles(math.rad(-10),0,0)) -- 3d pet rotation(spin)
+		petModel2:SetCFrame(CFrame.Angles(0,tick() % (math.pi * 2),0) * CFrame.Angles(math.rad(-10),0,0)) -- 3d pet rotation(spin)
+		petModel3:SetCFrame(CFrame.Angles(0,tick() % (math.pi * 2),0) * CFrame.Angles(math.rad(-10),0,0)) -- 3d pet rotation(spin)
+	end)
+	wait(3)
+	-- Destroying pets display
+	tweenService:Create(script.Parent.Parent.PetDisplay:FindFirstChildOfClass("ViewportFrame"),TweenInfo.new(.5),{ImageTransparency = 1}):Play() -- Fades out the display.
+	tweenService:Create(script.Parent.Parent.PetDisplay2:FindFirstChildOfClass("ViewportFrame"),TweenInfo.new(.5),{ImageTransparency = 1}):Play() -- Fades out the display.
+	tweenService:Create(script.Parent.Parent.PetDisplay3:FindFirstChildOfClass("ViewportFrame"),TweenInfo.new(.5),{ImageTransparency = 1}):Play() -- Fades out the display.
+
+	wait(.5)
+
+	for i, v in pairs(script.Parent.Parent.PetDisplay:GetDescendants()) do
+		if v:IsA("ViewportFrame") then
+			v:Destroy()
+		end
+	end
+	for i, v in pairs(script.Parent.Parent.PetDisplay2:GetDescendants()) do
+		if v:IsA("ViewportFrame") then
+			v:Destroy()
+		end
+	end
+	for i, v in pairs(script.Parent.Parent.PetDisplay3:GetDescendants()) do
+		if v:IsA("ViewportFrame") then
+			v:Destroy()
+		end
+	end
+	script.Parent.Parent.PetDisplay.Visible = false
+	script.Parent.Parent.PetDisplay2.Visible = false
+	script.Parent.Parent.PetDisplay3.Visible = false
+
+
+	isHatching = false
+end
+
+uis.InputBegan:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.E then -- If the keycode player pressed equals E (doesn't matter if its capital or not).
+		if player.Character ~= nil and isHatching == false then	 -- If player.Characer exists and isHatching equals to false.
+			local nearestEgg -- a blank for current nearest egg.
+			local plrPos = player.Character.HumanoidRootPart.Position
+			for i, v in pairs(Eggs:GetChildren()) do
+				if nearestEgg == nil then
+					nearestEgg = v
+				else
+					if (plrPos - v.PrimaryPart.Position).Magnitude < (nearestEgg.PrimaryPart.Position - plrPos).Magnitude then
+						nearestEgg = v -- Sets the nearest egg to closest egg near with player
+					end
+				end
+			end
+
+			if player:DistanceFromCharacter(nearestEgg.EggMesh.PrimaryPart.Position) < MaxDisplayDistance then --  If player is close enough to the egg then the player can open it.
+				canHatch = true
+			else
+				canHatch = false
+
+			end
+
+			if canHatch == true then -- If you can hatch it, will open the nearest egg.
+				local result = replicatedStorage:WaitForChild("EggHatchingRemotes"):WaitForChild("HatchServer"):InvokeServer(nearestEgg)
+				if result ~= nil then -- If result is not nil, then it will hatch one egg.
+					hatchOne(result,nearestEgg)
+				else
+					print("Cannot Hatch, Player too far.")
+				end
+			end
+		end
+	end
+	if input.KeyCode == Enum.KeyCode.R then -- If the keycode player pressed equals E (doesnt matter if its capital or not).
+		if player.Character ~= nil and isHatching == false then	 -- If player.Characer exists and isHatching equals to false.
+			local nearestEgg -- a blank for current nearest egg.
+			local plrPos = player.Character.HumanoidRootPart.Position
+			for i, v in pairs(Eggs:GetChildren()) do
+				if nearestEgg == nil then
+					nearestEgg = v
+				else
+					if (plrPos - v.PrimaryPart.Position).Magnitude < (nearestEgg.PrimaryPart.Position - plrPos).Magnitude then
+						nearestEgg = v -- Sets the nearest egg to closest egg near with player
+					end
+				end
+			end
+
+			if player:DistanceFromCharacter(nearestEgg.EggMesh.PrimaryPart.Position) < MaxDisplayDistance then --  If player is close enough to the egg then the player can open it.
+				canHatch = true
+			else
+				canHatch = false
+
+			end
+
+			if canHatch == true then -- If you can hatch it, will open the nearest egg.
+				local result1 = replicatedStorage:WaitForChild("EggHatchingRemotes"):WaitForChild("HatchServer"):InvokeServer(nearestEgg)
+				local result2 = replicatedStorage:WaitForChild("EggHatchingRemotes"):WaitForChild("HatchServer"):InvokeServer(nearestEgg)
+				local result3 = replicatedStorage:WaitForChild("EggHatchingRemotes"):WaitForChild("HatchServer"):InvokeServer(nearestEgg)
+
+				if result1 ~= nil and result2 ~= nil and result3 ~= nil then -- If result is not nil, then it will hatch 3 eggs.
+					tripleHatch(result1,result2,result3,nearestEgg)
+				else
+					print("Cannot Hatch, Player too far.")
+				end
+			end
+		end
+	end
+end)
